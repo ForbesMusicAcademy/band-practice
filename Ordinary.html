@@ -1288,6 +1288,15 @@
     return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (el && el.isContentEditable);
   }
 
+  // Set true only when a chart actually came from #preloadStateData below —
+  // i.e. this is a distributed student copy, not Dave's own master tool
+  // (whose preload block is always empty). Read by Performance mode's own
+  // init further down, so a student's very first open starts there too,
+  // without needing a second preload data field for it. Declared here, not
+  // next to loadState() itself, since loadState() is CALLED from this line
+  // — a `let` declared only near its own function body would still be in
+  // its temporal dead zone at the moment that call actually runs.
+  let usedPreload = false;
   let state = loadState();
   lastSnapshot = JSON.stringify(state);
   let armed = null; // {id,label,color,text} or {id,label,a,b,text} for accidentals, or {type:'tabriff'}
@@ -1398,12 +1407,6 @@
     if(!parsed.chordBank || typeof parsed.chordBank !== 'object') parsed.chordBank = {};
     return parsed;
   }
-  // Set true only when a chart actually came from #preloadStateData below —
-  // i.e. this is a distributed student copy, not Dave's own master tool
-  // (whose preload block is always empty). Read by Performance mode's own
-  // init further down, so a student's very first open starts there too,
-  // without needing a second preload data field for it.
-  let usedPreload = false;
   function loadState(){
     try{
       const raw = localStorage.getItem(STORE_KEY);
