@@ -1408,21 +1408,27 @@
     return parsed;
   }
   function loadState(){
-    try{
-      const raw = localStorage.getItem(STORE_KEY);
-      if(raw) return normalizeState(JSON.parse(raw));
-    }catch(e){}
-    // No autosave yet in this browser — a distributed copy of this file can
-    // carry a chart baked in via #preloadStateData (see PRELOAD-DATA markers
-    // below), so a student opens the file and their song is just there.
-    // Only ever used on the very first open: as soon as the tool autosaves,
-    // the raw branch above takes over and the student's own edits stick.
+    // A distributed student copy (real content baked in via #preloadStateData
+    // below, see PRELOAD-DATA markers) always shows exactly what was baked
+    // in, every open, checked first and unconditionally — never this
+    // browser's own autosave. Dave's call: a kid's own edits (or another
+    // kid's, on a shared device) never persist across a refresh, so nothing
+    // typed into someone else's device sticks around for the next kid to
+    // find. Costs session-to-session customisation (a slowed-down practice
+    // tempo, say) too, not just misuse — an accepted trade, not an oversight.
     try{
       const el = document.getElementById('preloadStateData');
       if(el && el.textContent.trim()){
         usedPreload = true;
         return normalizeState(JSON.parse(el.textContent));
       }
+    }catch(e){}
+    // Dave's own master tool (preload block always empty) keeps normal
+    // autosave-persists behaviour — he's actively building charts here, not
+    // handing out a fixed one.
+    try{
+      const raw = localStorage.getItem(STORE_KEY);
+      if(raw) return normalizeState(JSON.parse(raw));
     }catch(e){}
     return defaultState();
   }
