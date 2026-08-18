@@ -616,6 +616,28 @@
   body.performance-mode .subtitle{ display:none !important; }
   body.performance-mode .workspace{ grid-template-columns:1fr; }
 
+  /* Practice mode: a distributed student copy's permanent, locked-down
+     state (see practiceMode in the script below) — everything performance
+     mode already hides, plus the rest of the icon row (nothing left that
+     could change or lose the chart), plus the chart content itself made
+     inert. Section ▶/loop are explicitly exempted since they're genuine
+     practice controls, not editing. */
+  body.practice-mode .metronome-fab,
+  body.practice-mode .guitar-fab,
+  body.practice-mode .boom-fab,
+  body.practice-mode .lowink-fab,
+  body.practice-mode .chordbank-fab,
+  body.practice-mode .save-fab,
+  body.practice-mode .perf-fab{ display:none !important; }
+  body.practice-mode .lyric-mode-toggle,
+  body.practice-mode .add-measure-btn{ display:none !important; }
+  body.practice-mode .row-block,
+  body.practice-mode .row-block *{ pointer-events:none !important; }
+  body.practice-mode .row-block .section-play-btn,
+  body.practice-mode .row-block .section-play-btn *,
+  body.practice-mode .row-block .loop-toggle-btn,
+  body.practice-mode .row-block .loop-toggle-btn *{ pointer-events:auto !important; }
+
   .octave-row{ display:flex; align-items:center; gap:4px; margin-bottom:10px; }
   .octave-row-label{ font:700 11px var(--font-body); color:var(--ink-soft); margin-right:1px; white-space:nowrap; }
   .octave-btn{
@@ -1299,6 +1321,15 @@
   let usedPreload = false;
   let state = loadState();
   lastSnapshot = JSON.stringify(state);
+  // Every distributed copy that actually carries a baked-in chart is, by
+  // definition, a student copy handed out for practice — not a second
+  // "backup with today's chart" use of the preload mechanism. So this rides
+  // directly on usedPreload rather than being its own separate build flag
+  // Dave would have to remember to pass: one fact (does this file have a
+  // real preload?) now drives both "which chart loads" and "is this locked
+  // down." Permanent for the life of the page load — see the Performance
+  // mode block further down, which is what actually enforces it.
+  const practiceMode = usedPreload;
   let armed = null; // {id,label,color,text} or {id,label,a,b,text} for accidentals, or {type:'tabriff'}
   let octaveArmed = 0; // -1 (Low) / 0 (Mid) / 1 (High) — baked into the next placed chord/note, like a rest
   let suppressNextClick = false; // set by startMoveBlock when a drag actually moved something, so the trailing click doesn't also place/split
@@ -2934,6 +2965,7 @@
       label.className = 'row-label';
       label.value = row.label;
       label.setAttribute('aria-label', 'Section name');
+      if(practiceMode) label.readOnly = true;
       label.addEventListener('input', () => { row.label = label.value; save(); });
       const rhythmSelect = document.createElement('select');
       rhythmSelect.className = 'rhythm-select no-print perf-hide';
@@ -3806,28 +3838,34 @@
   // ---- Performance mode ----
   // A personal device preference like the theme/click settings, not chart
   // data — its own localStorage key, untouched by New chart or by loading a
-  // different chart, and survives a page reload.
+  // different chart, and survives a page reload. In practiceMode this whole
+  // preference is moot: performance mode is forced on permanently and the
+  // toggle button doesn't exist (see the CSS and practiceMode's own comment
+  // above), so PERF_KEY is never read or written for a student copy — a kid
+  // switching it off on one hosted song can no longer leak into every other
+  // song sharing the same github.io origin/localStorage, which is exactly
+  // the gap that made the old always-visible toggle "not really locked."
   const PERF_KEY = 'fma-band-sheet-builder-perf';
-  let performanceMode = false;
-  try{
-    const saved = localStorage.getItem(PERF_KEY);
-    // No saved preference yet on this device: a distributed student copy
-    // starts in Performance mode by default (a fresh master-tool open, with
-    // no preload, still starts false as always). Once a student toggles it
-    // themselves, their own choice is saved and always wins from then on.
-    if(saved !== null) performanceMode = saved === 'on';
-    else if(usedPreload) performanceMode = true;
-  }catch(e){}
+  let performanceMode = practiceMode;
+  if(!practiceMode){
+    try{
+      const saved = localStorage.getItem(PERF_KEY);
+      if(saved !== null) performanceMode = saved === 'on';
+    }catch(e){}
+  }
   function applyPerformanceMode(){
     document.body.classList.toggle('performance-mode', performanceMode);
+    document.body.classList.toggle('practice-mode', practiceMode);
     const btn = document.getElementById('perfModeBtn');
     if(btn) btn.classList.toggle('active', performanceMode);
   }
-  document.getElementById('perfModeBtn').addEventListener('click', () => {
-    performanceMode = !performanceMode;
-    try{ localStorage.setItem(PERF_KEY, performanceMode ? 'on' : 'off'); }catch(e){}
-    applyPerformanceMode();
-  });
+  if(!practiceMode){
+    document.getElementById('perfModeBtn').addEventListener('click', () => {
+      performanceMode = !performanceMode;
+      try{ localStorage.setItem(PERF_KEY, performanceMode ? 'on' : 'off'); }catch(e){}
+      applyPerformanceMode();
+    });
+  }
   applyPerformanceMode();
 
   // Space bar toggles Play along, so it can be stopped without scrolling
