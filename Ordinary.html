@@ -618,15 +618,15 @@
 
   /* Practice mode: a distributed student copy's permanent, locked-down
      state (see practiceMode in the script below) — everything performance
-     mode already hides, plus the rest of the icon row (nothing left that
-     could change or lose the chart), plus the chart content itself made
-     inert. Section ▶/loop are explicitly exempted since they're genuine
-     practice controls, not editing. */
-  body.practice-mode .metronome-fab,
-  body.practice-mode .guitar-fab,
+     mode already hides, plus the chart content itself made inert, plus
+     most of the icon row. Dave's actual practice-tool set (18 Aug 2026):
+     Play, Metronome, the Low-E/root-note view, and the Chord bank stay —
+     Boomwhacker view, low-ink view, Save as file, and the Performance
+     toggle itself (no way back to editor UI) are the ones still hidden.
+     Section ▶/loop are explicitly exempted from the chart lock too, since
+     they're genuine practice controls, not editing. */
   body.practice-mode .boom-fab,
   body.practice-mode .lowink-fab,
-  body.practice-mode .chordbank-fab,
   body.practice-mode .save-fab,
   body.practice-mode .perf-fab{ display:none !important; }
   body.practice-mode .lyric-mode-toggle,
@@ -637,6 +637,12 @@
   body.practice-mode .row-block .section-play-btn *,
   body.practice-mode .row-block .loop-toggle-btn,
   body.practice-mode .row-block .loop-toggle-btn *{ pointer-events:auto !important; }
+  /* Chord bank stays open-able and its Level tabs/print button stay live —
+     only the actual drawing surface (start-fret, open/mute, fret-cell
+     cycling) is locked, same "viewable, not editable" spirit as the chart
+     lock above. */
+  body.practice-mode .chd-wrap,
+  body.practice-mode .chd-wrap *{ pointer-events:none !important; }
 
   .octave-row{ display:flex; align-items:center; gap:4px; margin-bottom:10px; }
   .octave-row-label{ font:700 11px var(--font-body); color:var(--ink-soft); margin-right:1px; white-space:nowrap; }
@@ -2924,13 +2930,18 @@
       sectionPlayBtn.className = 'section-play-btn no-print';
       sectionPlayBtn.dataset.rowId = row.id;
       sectionPlayBtn.title = 'Play from this section to the end of the chart';
-      if(playing && activePlaySectionId === row.id){
+      if(playing && lastPlayingRowId === row.id){
         sectionPlayBtn.textContent = '■'; sectionPlayBtn.classList.add('active');
       } else {
         sectionPlayBtn.textContent = '▶';
       }
       sectionPlayBtn.addEventListener('click', () => {
-        if(playing && activePlaySectionId === row.id){ stopPlayback(); return; }
+        // Checks which section is *currently sounding* (lastPlayingRowId),
+        // not which one was originally clicked to start this run — so
+        // whichever section's button auto-scroll has carried you to is a
+        // real stop control for the whole run, not just a stop for the
+        // section that happened to start it.
+        if(playing && lastPlayingRowId === row.id){ stopPlayback(); return; }
         if(playing) stopPlayback();
         if(row.loop){
           startPlayback([row], row.id, true);
@@ -3622,23 +3633,28 @@
     }
   }
   // Which section is actually sounding right now greys out every other
-  // section on screen — gated by rowId so it's cheap to call every
-  // animation frame, only touching the DOM when the playing row actually
-  // changes. Works in Performance mode for free: .row-block isn't a
-  // perf-hide element, so the filter applies regardless of view.
-  function applySectionVisuals(measureRef){
+  // section on screen, and moves the ■/active state to that section's own
+  // ▶ button — the single "what's the current section" update, gated by
+  // rowId (a no-op unless it's actually changed) so it's cheap to call
+  // every animation frame. Also called once, eagerly, from startPlayback so
+  // the right button lights up immediately rather than waiting for the
+  // first scheduled beat. Works in Performance mode for free: .row-block
+  // isn't a perf-hide element, so the filter applies regardless of view.
+  function applySectionVisuals(rowId){
+    if(rowId === lastPlayingRowId) return;
+    lastPlayingRowId = rowId;
     document.querySelectorAll('.row-block.section-not-playing').forEach(el => el.classList.remove('section-not-playing'));
+    document.querySelectorAll('.section-play-btn.active').forEach(b => { b.textContent = '▶'; b.classList.remove('active'); });
     state.rows.forEach(row => {
-      if(row.id === measureRef.rowId) return;
+      if(row.id === rowId) return;
       const el = document.querySelector(`.row-block[data-row-id="${row.id}"]`);
       if(el) el.classList.add('section-not-playing');
     });
+    const sBtn = document.querySelector(`.section-play-btn[data-row-id="${rowId}"]`);
+    if(sBtn){ sBtn.textContent = '■'; sBtn.classList.add('active'); }
   }
   function highlightMeasure(measureRef, beatInMeasure){
-    if(measureRef.rowId !== lastPlayingRowId){
-      lastPlayingRowId = measureRef.rowId;
-      applySectionVisuals(measureRef);
-    }
+    applySectionVisuals(measureRef.rowId);
     const el = document.querySelector(`.measure[data-row-id="${measureRef.rowId}"][data-index="${measureRef.index}"]`);
     if(!el) return;
     if(el !== currentHighlightEl){
@@ -3688,10 +3704,10 @@
     playRAF = requestAnimationFrame(animationLoop);
     const btn = document.getElementById('playBtn');
     if(btn){ btn.textContent = '■'; btn.setAttribute('aria-label', 'Stop'); btn.title = 'Stop playback'; btn.classList.add('active'); }
-    if(activePlaySectionId){
-      const sBtn = document.querySelector(`.section-play-btn[data-row-id="${activePlaySectionId}"]`);
-      if(sBtn){ sBtn.textContent = '■'; sBtn.classList.add('active'); }
-    }
+    // lastPlayingRowId is always null here (stopPlayback resets it), so this
+    // unconditionally lights up whichever row is about to sound first —
+    // same function highlightMeasure calls on every later section change.
+    if(rowsList && rowsList[0]) applySectionVisuals(rowsList[0].id);
   }
   function stopPlayback(){
     playing = false;
