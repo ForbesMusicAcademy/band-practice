@@ -1405,7 +1405,7 @@
       laneSolo: {chords:false, melody:false},
       laneVolume: {chords:1, melody:1},
       key:'',
-      lowEFrets:false,
+      lowEFrets:true,
       boomwhackers:false,
       lowInk:false,
       lyricText:'',
@@ -1444,7 +1444,7 @@
       if(parsed.laneVolume[k] == null) parsed.laneVolume[k] = 1;
     });
     if(parsed.key == null) parsed.key = '';
-    if(parsed.lowEFrets == null) parsed.lowEFrets = false;
+    if(parsed.lowEFrets == null) parsed.lowEFrets = true;
     if(parsed.boomwhackers == null) parsed.boomwhackers = false;
     if(typeof parsed.lyricText !== 'string') parsed.lyricText = '';
     if(!Array.isArray(parsed.lyricMarks)) parsed.lyricMarks = [];

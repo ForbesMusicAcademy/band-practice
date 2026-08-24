@@ -541,16 +541,20 @@
   }
   .lyric-mode-toggle button.active{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent-ink); }
 
-  .lyric-align-row{ display:flex; flex-direction:column; gap:10px; margin-top:6px; }
-  .lyric-line{ display:grid; }
-  .lyric-align-cell{
-    min-width:0; display:grid; align-items:center; padding:0 2px;
+  /* Aligned-to-chords lyrics now live inside each measure, stacked under
+     its melody strip, instead of in one row below the whole section — so a
+     syllable sits directly beneath the chord/beat it's sung on. */
+  .measure--has-melody.measure--has-lyric{ padding-bottom:40px; }
+  .measure--has-melody.measure--has-lyric .melody-strip{ bottom:20px; }
+  .lyric-strip{
+    position:absolute; left:2px; right:2px; bottom:2px; height:16px; display:grid; z-index:3;
   }
-  .lyric-align-cell.single{ display:block; }
+  .tab-lyric-strip{ margin-top:6px; padding:0 4px; }
   .lyric-input{
-    font:italic 12px var(--font-body); background:transparent; border:none; border-top:1px dashed var(--rule);
-    color:var(--ink-soft); text-align:center; padding:4px 2px 0; width:100%; min-width:0;
+    font:italic 11px var(--font-body); background:transparent; border:none; border-top:1px dashed var(--rule);
+    color:var(--ink-soft); text-align:center; padding:3px 2px 0; width:100%; min-width:0;
   }
+  .tab-lyric-strip .lyric-input{ text-align:left; }
   .lyric-input::placeholder{ color:var(--rule); }
   .lyric-input:focus{ color:var(--ink); }
 
@@ -936,11 +940,14 @@
   // the open low E string plays that root", for absolute beginners who can
   // only fret one string (E=0, F=1, F♯=2, G=3, ...). Falls back to the
   // original label untouched if it can't be parsed as a root (e.g. "N.C."),
-  // rather than showing a wrong or blank number.
-  function lowEFretLabel(label){
+  // rather than showing a wrong or blank number. A block armed/toggled to
+  // the High octave plays the same fret an octave up the neck (+12) — Low
+  // is left unshifted since there's no fret below the open string to show.
+  function lowEFretLabel(label, octave){
     const semitone = parseRootSemitone(label);
     if(semitone == null) return label;
-    return String((semitone - NOTE_SEMITONE.E + 12) % 12);
+    const fret = (semitone - NOTE_SEMITONE.E + 12) % 12;
+    return String(octave === 1 ? fret + 12 : fret);
   }
   const NOTES = [
     {id:'C', label:'C', color:'#D6412C', text:'#fff', semitone:0},
@@ -1398,7 +1405,7 @@
       laneSolo: {chords:false, melody:false},
       laneVolume: {chords:1, melody:1},
       key:'',
-      lowEFrets:false,
+      lowEFrets:true,
       boomwhackers:false,
       lowInk:false,
       lyricText:'',
@@ -1437,7 +1444,7 @@
       if(parsed.laneVolume[k] == null) parsed.laneVolume[k] = 1;
     });
     if(parsed.key == null) parsed.key = '';
-    if(parsed.lowEFrets == null) parsed.lowEFrets = false;
+    if(parsed.lowEFrets == null) parsed.lowEFrets = true;
     if(parsed.boomwhackers == null) parsed.boomwhackers = false;
     if(typeof parsed.lyricText !== 'string') parsed.lyricText = '';
     if(!Array.isArray(parsed.lyricMarks)) parsed.lyricMarks = [];
@@ -2692,60 +2699,46 @@
   // "Aligned" lyrics: one small input per chord-change/bar, grid-positioned
   // to match that block's own position — so lining lyrics up in time with
   // the bars is automatic (same grid math), not something typed by feel.
-  function buildAlignedLyricsRow(row){
-    const alignRow = document.createElement('div');
-    alignRow.className = 'lyric-align-row';
-    const totalSlots = tabSlots();
-    const perRow = state.measuresPerRow || 4;
-    const lines = chunkMeasuresIntoLines(row.measures, perRow);
-
-    lines.forEach(line => {
-      const lineEl = document.createElement('div');
-      lineEl.className = 'lyric-line';
-      lineEl.style.gridTemplateColumns = `repeat(${line.cols}, 1fr)`;
-
-      line.items.forEach(({measure}) => {
-      const cell = document.createElement('div');
-      cell.className = 'lyric-align-cell';
-
-      if(measure.segments && measure.segments.length > 0){
-        cell.style.gridTemplateColumns = `repeat(${totalSlots}, 1fr)`;
-        if(measure.segments.some(s => s.len == null)) redistributeEvenly(measure, totalSlots);
-        if(measure.segments.some(s => s.start == null)) backfillStarts(measure.segments);
-        let cum = 0;
-        measure.segments.forEach(seg => {
-          const segLen = seg.len || Math.floor(totalSlots / measure.segments.length);
-          const segStart = seg.start != null ? seg.start : cum;
-          const input = document.createElement('input');
-          input.type = 'text'; input.className = 'lyric-input';
-          input.style.gridColumn = `${segStart + 1} / span ${segLen}`;
-          input.value = seg.lyric || '';
-          input.placeholder = seg.label;
-          input.setAttribute('aria-label', 'Lyric under the ' + seg.label + ' chord change');
-          input.addEventListener('input', () => { seg.lyric = input.value; save(); });
-          cell.appendChild(input);
-          cum += segLen;
-        });
-      } else if(measure.tab){
-        cell.classList.add('single');
-        const input = document.createElement('input');
-        input.type = 'text'; input.className = 'lyric-input';
-        input.value = measure.tab.lyric || '';
-        input.placeholder = 'lyric…';
-        input.setAttribute('aria-label', 'Lyric for this tab riff');
-        input.addEventListener('input', () => { measure.tab.lyric = input.value; save(); });
-        cell.appendChild(input);
-      }
-      // Empty measures render an empty cell — nothing to align lyrics to
-      // yet, but the slot still has to hold its place in the row.
-
-        lineEl.appendChild(cell);
-      });
-
-      alignRow.appendChild(lineEl);
+  // Rendered right inside the measure itself (under its melody strip), not
+  // in a separate row, so the lyric sits exactly under the chord it's sung
+  // on rather than at the bottom of the whole section.
+  function buildLyricStrip(measure, totalSlots){
+    const strip = document.createElement('div');
+    strip.className = 'lyric-strip';
+    strip.style.gridTemplateColumns = `repeat(${totalSlots}, 1fr)`;
+    if(measure.segments.some(s => s.len == null)) redistributeEvenly(measure, totalSlots);
+    if(measure.segments.some(s => s.start == null)) backfillStarts(measure.segments);
+    measure.segments.forEach(seg => {
+      const input = document.createElement('input');
+      input.type = 'text'; input.className = 'lyric-input';
+      input.style.gridColumn = `${seg.start + 1} / span ${seg.len}`;
+      input.value = seg.lyric || '';
+      input.placeholder = seg.label;
+      input.setAttribute('aria-label', 'Lyric under the ' + seg.label + ' chord change');
+      input.addEventListener('input', () => { seg.lyric = input.value; save(); });
+      strip.appendChild(input);
     });
+    // Stop clicks/drags on the inputs from bubbling up to the measure's own
+    // click-to-place-armed-tile and group-select handlers, same pattern as
+    // buildMelodyStrip's own overlay.
+    strip.addEventListener('click', e => e.stopPropagation());
+    strip.addEventListener('pointerdown', e => e.stopPropagation());
+    return strip;
+  }
 
-    return alignRow;
+  function buildTabLyricStrip(measure){
+    const strip = document.createElement('div');
+    strip.className = 'tab-lyric-strip';
+    const input = document.createElement('input');
+    input.type = 'text'; input.className = 'lyric-input';
+    input.value = measure.tab.lyric || '';
+    input.placeholder = 'lyric…';
+    input.setAttribute('aria-label', 'Lyric for this tab riff');
+    input.addEventListener('input', () => { measure.tab.lyric = input.value; save(); });
+    strip.appendChild(input);
+    strip.addEventListener('click', e => e.stopPropagation());
+    strip.addEventListener('pointerdown', e => e.stopPropagation());
+    return strip;
   }
 
   // Every measure in the chart gets one bar number, counted continuously
@@ -3028,9 +3021,11 @@
         mEl.appendChild(barBadge);
 
         const totalSlots = tabSlots();
+        const lyricMode = row.lyricMode || 'freeform';
         if(measure.tab){
           mEl.classList.add('measure--tab');
           mEl.appendChild(buildTabRiffBlock(measure));
+          if(lyricMode === 'aligned') mEl.appendChild(buildTabLyricStrip(measure));
           lastChordLabel = null;
         } else if(!measure.segments || measure.segments.length === 0){
           const ph = document.createElement('div');
@@ -3059,6 +3054,22 @@
             sEl.className = 'segment' + (seg.rest ? ' rest' : '');
             sEl.style.gridColumn = `${seg.start + 1} / span ${segLen}`;
             sEl.addEventListener('pointerdown', e => startMoveBlock(e, measure.segments, segIdx, totalSlots, segEls, renderChart));
+            if(!seg.rest){
+              // A plain click (no drag, nothing armed to place) cycles this
+              // block's own octave Mid -> High -> Low -> Mid, same field the
+              // Octave row arms before placing — lets a chord already on the
+              // chart be bumped up/down after the fact instead of having to
+              // delete and re-place it. Shows immediately as the existing
+              // lighter/darker shade, and (in the low-E fret view) as +12
+              // on High.
+              sEl.addEventListener('click', e => {
+                if(suppressNextClick || armed) return;
+                e.stopPropagation();
+                seg.octave = seg.octave === 1 ? -1 : (seg.octave === -1 ? 0 : 1);
+                save();
+                renderChart();
+              });
+            }
             if(seg.rest){
               // A rest always shows and always breaks the "only print where it
               // changes" chain — the chord after it is a fresh entrance, not a
@@ -3114,8 +3125,8 @@
               style += `color:${seg.text};`;
             }
             sEl.style.cssText += style;
-            sEl.title = seg.label + (seg.octave === 1 ? ' (High)' : seg.octave === -1 ? ' (Low)' : '');
-            const displayLabel = state.lowEFrets ? lowEFretLabel(seg.label) : seg.label;
+            sEl.title = seg.label + (seg.octave === 1 ? ' (High)' : seg.octave === -1 ? ' (Low)' : '') + (seg.rest ? '' : ' — click to cycle octave');
+            const displayLabel = state.lowEFrets ? lowEFretLabel(seg.label, seg.octave) : seg.label;
             if(tubeColors){
               // Every bar gets its own tube cue and label, even a held chord
               // repeated across several bars — unlike the plain view's
@@ -3157,6 +3168,10 @@
         if(!measure.tab){
           mEl.classList.add('measure--has-melody');
           mEl.appendChild(buildMelodyStrip(measure, totalSlots));
+          if(lyricMode === 'aligned' && measure.segments && measure.segments.length > 0){
+            mEl.classList.add('measure--has-lyric');
+            mEl.appendChild(buildLyricStrip(measure, totalSlots));
+          }
         }
 
         if(groupSelectMode){
@@ -3230,9 +3245,7 @@
       lyricToggle.append(freeformBtn, alignedBtn);
       block.appendChild(lyricToggle);
 
-      if(mode === 'aligned'){
-        block.appendChild(buildAlignedLyricsRow(row));
-      } else {
+      if(mode !== 'aligned'){
         const lyrics = document.createElement('textarea');
         lyrics.className = 'lyrics-input';
         lyrics.rows = 1;
@@ -3244,6 +3257,8 @@
         block.appendChild(lyrics);
         requestAnimationFrame(growLyrics);
       }
+      // Aligned mode's lyric inputs render inline inside each measure (see
+      // buildLyricStrip/buildTabLyricStrip above) — nothing extra to add here.
 
       wrap.appendChild(block);
     });
