@@ -334,7 +334,9 @@
   .chart-rows{ display:flex; flex-direction:column; gap:12px; }
   .row-block{
     background:var(--paper-raise); border:1px solid var(--rule); border-radius:10px; padding:10px 14px 12px;
+    display:flex; align-items:center; gap:12px;
   }
+  .row-main{ flex:1; min-width:0; }
   .row-head{ display:flex; align-items:center; gap:10px; margin-bottom:8px; }
   .row-label{
     font:700 15px var(--font-display); background:transparent; border:none; border-bottom:1px solid transparent;
@@ -347,6 +349,43 @@
     width:26px; height:26px; font-size:13px; line-height:1; display:flex; align-items:center; justify-content:center;
   }
   .icon-btn:hover{ border-color:var(--danger); color:var(--danger); }
+
+  /* Rhythm card: a measure's worth of note-value icons sitting beside each
+     section, so a student reading a Performance-mode chart (where the
+     rhythm-select dropdown below is hidden via .perf-hide) still has a
+     visual cue for how often to strum each held chord — the same info the
+     dropdown sets, just shown instead of told. Count of icons = 1/RHYTHM_
+     FRACTION for that setting (see script), which is also exactly how many
+     times Play along actually re-strikes a held chord per bar, so the card
+     never drifts out of sync with what the ear hears. */
+  .rhythm-card{
+    flex:0 0 auto; width:72px; align-self:center; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; gap:6px; padding:8px 6px;
+    background:var(--paper); border:1px solid var(--rule); border-radius:8px;
+  }
+  .rhythm-card-label{
+    font:700 9px var(--font-body); letter-spacing:.03em; text-transform:uppercase;
+    color:var(--ink-soft); text-align:center; line-height:1.15;
+  }
+  .rhythm-card-notes{ display:flex; align-items:flex-end; justify-content:center; gap:4px; flex-wrap:wrap; }
+  .note-icon{ position:relative; width:8px; height:28px; flex:0 0 auto; }
+  .note-icon .note-head{
+    position:absolute; bottom:0; left:0; width:8px; height:7px; border-radius:50%; background:var(--ink);
+  }
+  .note-icon.hollow .note-head{ background:var(--paper); border:2px solid var(--ink); box-sizing:border-box; }
+  .note-icon .note-stem{ position:absolute; bottom:5px; right:-1px; width:2px; height:22px; background:var(--ink); }
+  .note-icon.no-stem{ width:14px; }
+  .note-icon.no-stem .note-head{ width:14px; height:9px; left:0; }
+  .note-pair{ position:relative; width:18px; height:28px; flex:0 0 auto; }
+  .note-pair .note-icon{ position:absolute; bottom:0; }
+  .note-pair .note-icon:first-child{ left:0; }
+  .note-pair .note-icon:last-child{ left:10px; }
+  .note-pair .beam{ position:absolute; top:0; left:1px; width:16px; height:3px; background:var(--ink); border-radius:1px; }
+  @media (max-width:600px){
+    .row-block{ flex-wrap:wrap; }
+    .rhythm-card{ order:2; width:auto; flex:1 1 100%; flex-direction:row; }
+    .rhythm-card-label{ text-align:left; }
+  }
 
   .measures-row{ display:flex; flex-direction:column; gap:6px; }
   .measures-line{ display:grid; }
@@ -2909,6 +2948,11 @@
       block.className = 'row-block';
       block.dataset.rowId = row.id;
 
+      const main = document.createElement('div');
+      main.className = 'row-main';
+
+      const rhythmCard = buildRhythmCard(row.rhythm || 'whole');
+
       const head = document.createElement('div');
       head.className = 'row-head';
       // A student practising doesn't always want to start from bar 1 of the
@@ -2981,7 +3025,9 @@
         if((row.rhythm || 'whole') === value) opt.selected = true;
         rhythmSelect.appendChild(opt);
       });
-      rhythmSelect.addEventListener('change', () => { row.rhythm = rhythmSelect.value; save(); });
+      rhythmSelect.addEventListener('change', () => {
+        row.rhythm = rhythmSelect.value; save(); updateRhythmCard(rhythmCard, row.rhythm);
+      });
       const actions = document.createElement('div');
       actions.className = 'row-actions no-print perf-hide';
       const delRow = document.createElement('button');
@@ -2993,7 +3039,7 @@
       });
       actions.appendChild(delRow);
       head.appendChild(sectionPlayBtn); head.appendChild(loopBtn); head.appendChild(label); head.appendChild(rhythmSelect); head.appendChild(actions);
-      block.appendChild(head);
+      main.appendChild(head);
 
       const measuresRow = document.createElement('div');
       measuresRow.className = 'measures-row';
@@ -3228,8 +3274,8 @@
         save(); renderChart();
       });
 
-      block.appendChild(measuresRow);
-      block.appendChild(addMeasureBtn);
+      main.appendChild(measuresRow);
+      main.appendChild(addMeasureBtn);
 
       const lyricToggle = document.createElement('div');
       lyricToggle.className = 'lyric-mode-toggle no-print';
@@ -3243,7 +3289,7 @@
       alignedBtn.className = mode === 'aligned' ? 'active' : '';
       alignedBtn.addEventListener('click', () => { row.lyricMode = 'aligned'; save(); renderChart(); });
       lyricToggle.append(freeformBtn, alignedBtn);
-      block.appendChild(lyricToggle);
+      main.appendChild(lyricToggle);
 
       if(mode !== 'aligned'){
         const lyrics = document.createElement('textarea');
@@ -3254,12 +3300,14 @@
         lyrics.setAttribute('aria-label', 'Lyrics for ' + row.label);
         const growLyrics = () => { lyrics.style.height = 'auto'; lyrics.style.height = lyrics.scrollHeight + 'px'; };
         lyrics.addEventListener('input', () => { row.lyrics = lyrics.value; growLyrics(); save(); });
-        block.appendChild(lyrics);
+        main.appendChild(lyrics);
         requestAnimationFrame(growLyrics);
       }
       // Aligned mode's lyric inputs render inline inside each measure (see
       // buildLyricStrip/buildTabLyricStrip above) — nothing extra to add here.
 
+      block.appendChild(main);
+      block.appendChild(rhythmCard);
       wrap.appendChild(block);
     });
     updateRowCount();
@@ -3339,6 +3387,67 @@
   // "quarter notes" always means 4 evenly-spaced strikes across a full bar,
   // regardless of time signature (see buildPlaySchedule's use of this).
   const RHYTHM_FRACTION = {whole: 1, half: 0.5, quarter: 0.25, eighth: 0.125};
+
+  // The rhythm card beside each section shows this many note-value icons —
+  // exactly 1/RHYTHM_FRACTION, i.e. however many times Play along actually
+  // re-strikes a held chord per bar under that setting, so the visual can
+  // never say something the ear doesn't hear. 'eighth' renders as beamed
+  // pairs (a real quaver reads as a pair, not 8 loose flags), so its count
+  // here is pairs, not individual notes.
+  const RHYTHM_DISPLAY = {
+    whole:   {label:'Whole notes',   count:1, kind:'whole'},
+    half:    {label:'Half notes',    count:2, kind:'half'},
+    quarter: {label:'Quarter notes', count:4, kind:'quarter'},
+    eighth:  {label:'Eighth notes',  count:4, kind:'eighthPair'}
+  };
+
+  function buildSingleNote(style){
+    const icon = document.createElement('span');
+    icon.className = 'note-icon' + (style === 'hollow' ? ' hollow' : '') + (style === 'whole' ? ' no-stem' : '');
+    const head = document.createElement('span');
+    head.className = 'note-head';
+    icon.appendChild(head);
+    if(style !== 'whole'){
+      const stem = document.createElement('span');
+      stem.className = 'note-stem';
+      icon.appendChild(stem);
+    }
+    return icon;
+  }
+
+  function buildNoteIcon(kind){
+    if(kind === 'eighthPair'){
+      const pair = document.createElement('span');
+      pair.className = 'note-pair';
+      pair.appendChild(buildSingleNote('filled'));
+      pair.appendChild(buildSingleNote('filled'));
+      const beam = document.createElement('span');
+      beam.className = 'beam';
+      pair.appendChild(beam);
+      return pair;
+    }
+    return buildSingleNote(kind === 'whole' ? 'whole' : kind === 'half' ? 'hollow' : 'filled');
+  }
+
+  function updateRhythmCard(card, rhythmKey){
+    const info = RHYTHM_DISPLAY[rhythmKey] || RHYTHM_DISPLAY.whole;
+    card.title = `Play along re-strikes each held chord ${info.count === 1 ? 'once' : info.count + ' times'} per bar (${info.label.toLowerCase()})`;
+    card.innerHTML = '';
+    const label = document.createElement('div');
+    label.className = 'rhythm-card-label';
+    label.textContent = info.label;
+    const notes = document.createElement('div');
+    notes.className = 'rhythm-card-notes';
+    for(let i = 0; i < info.count; i++) notes.appendChild(buildNoteIcon(info.kind));
+    card.append(label, notes);
+  }
+
+  function buildRhythmCard(rhythmKey){
+    const card = document.createElement('div');
+    card.className = 'rhythm-card';
+    updateRhythmCard(card, rhythmKey);
+    return card;
+  }
 
   // Works out real pitches for a placed chord/note tile from its label text
   // alone (e.g. "Dm7", "F♯", "B♭7", "Cmaj7", "Gsus4") — the palette only
