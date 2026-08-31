@@ -2975,7 +2975,7 @@
       rhythmSelect.className = 'rhythm-select no-print perf-hide';
       rhythmSelect.title = "How often Play along re-strikes this section's chords within each held chord — doesn't change the chart itself";
       rhythmSelect.setAttribute('aria-label', 'Section strum rhythm for Play along');
-      [['whole','Whole notes'], ['half','Half notes'], ['quarter','Quarter notes']].forEach(([value, text]) => {
+      [['whole','Whole notes'], ['half','Half notes'], ['quarter','Quarter notes'], ['eighth','Eighth notes']].forEach(([value, text]) => {
         const opt = document.createElement('option');
         opt.value = value; opt.textContent = text;
         if((row.rhythm || 'whole') === value) opt.selected = true;
@@ -3338,7 +3338,7 @@
   // A section's chosen strum rhythm, as a fraction of one bar's duration —
   // "quarter notes" always means 4 evenly-spaced strikes across a full bar,
   // regardless of time signature (see buildPlaySchedule's use of this).
-  const RHYTHM_FRACTION = {whole: 1, half: 0.5, quarter: 0.25};
+  const RHYTHM_FRACTION = {whole: 1, half: 0.5, quarter: 0.25, eighth: 0.125};
 
   // Works out real pitches for a placed chord/note tile from its label text
   // alone (e.g. "Dm7", "F♯", "B♭7", "Cmaj7", "Gsus4") — the palette only
